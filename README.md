@@ -1,4 +1,4 @@
-eucalyptopatamus
+eucalyptopotamus
 ================
 
 AWS services demonstration

@@ -1,8 +1,9 @@
 from django.http import HttpResponse
 from django.utils import timezone
+from django.views.decorators.csrf import csrf_exempt
 from imagecrud.models import Image
 from django import forms
-
+import base64
 import os
 
 from django import forms
@@ -13,7 +14,14 @@ class UploadFileForm(forms.Form):
 
 # Create your views here.
 def index(request):
-    return HttpResponse("Welcome to Eucalyptus Image CRUD!")
+    body=''
+    try:
+        for image in Image.objects.all():
+            body = body + 'http://%s%s%s\n' % (request.get_host(), request.get_full_path(), image.name)
+    except Exception, err:
+        return HttpResponse(err, status=500)
+ 
+    return HttpResponse(body, status=200)
 
 img_dir = '/tmp/image_crud/'
 
@@ -26,37 +34,72 @@ def store_uploaded_file(f, name):
             destination.write(chunk)
     return path
 
-def create(request, image_name):
-    if not request.method == 'POST':
-        return HttpResponse(status=405)
-    try:
-        image=Image.objects.get(name=image_name)
-        return HttpResponse(status=405)
-    except Image.DoesNotExist:
-        form = UploadFileForm(request.POST, request.FILES)
-        path = None
-        if form.is_valid():
-            try:
-                path = store_uploaded_file(request.FILES['file'], image_name)
-            except:
-                return HttpResponse(status=500)
-            img = Image(name=image_name,pub_date=timezone.now(),path=path)
-            img.save()
-            return HttpResponse('image %s created' % image_name, status=200)
-        else:
-            return HttpResponse(status=405)
-
-def read(request, image_name):
-    return HttpResponse("you are reading %s" % image_name)
+@csrf_exempt
+def call(request, image_name):
+    if request.method == 'POST':
+        return update(request, image_name)
+    elif request.method == 'GET':
+        return read(request, image_name)
+    elif request.method == 'DELETE':
+        return delete(request, image_name)
 
 def update(request, image_name):
-    return HttpResponse("you are updating %s" % image_name)
+    form = UploadFileForm(request.GET, request.FILES)
+    path = None
+    try:
+        path= store_uploaded_file(request.FILES['file'], image_name)
+    except:
+        return HttpResponse('server error', status=500)
+    try:
+        image=Image.objects.get(name=image_name)
+        image.pub_date=timezone.now()
+        image.save()
+        return HttpResponse(status=200)
+    except Image.DoesNotExist:
+        img = Image(name=image_name,pub_date=timezone.now(),path=path)
+        img.save()
+        return HttpResponse(status=200)
+
+def read(request, image_name):
+    path = None
+    try:
+        image=Image.objects.get(name=image_name)
+        path = image.path
+    except Image.DoesNotExist:
+        return HttpResponse(status=404)
+    
+    data = None
+    try:
+       file = open(path)
+       data = file.read()
+       file.close()
+    except Exception, err:
+        return HttpResponse(err, status=500)
+    try:
+        encoded = base64.b64encode(data)
+        type='jpeg'
+        if path.endswith('jpg') or path.endswith('jpeg') or path.endswith('JPG') or path.endswith('JPEG'):
+            type='jpeg'
+        elif path.endswith('gif') or path.endswith('GIF'):
+            type='gif'
+        body = '<html><head></head><body> <img src=\"data:image/%s;base64,%s\"> </body></html>' % (type,encoded)
+        return HttpResponse(body, status=200)
+    except Exception, err:
+        return HttpResponse(err, status=500)
+
 
 def delete(request, image_name):
     try:
         image=Image.objects.get(name=image_name)
+        filepath = image.path
+        print "deleting: %s" %filepath
+        try:
+            if os.path.exists(filepath):
+                os.unlink(filepath)
+        except Exception, err:
+            return HttpResponse(err, status=500)
         image.delete()
-        return HttpResponse('image %s deleted' % image_name, status=200)
+        return HttpResponse(status=200)
     except Image.DoesNotExist:
         return HttpResponse(status=404)
     except Exception, err:

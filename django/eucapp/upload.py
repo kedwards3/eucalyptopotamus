@@ -4,10 +4,6 @@ import os, sys
 import pycurl
 from optparse import OptionParser
 
-
-def get_content_type(filename):
-    return mimetypes.guess_type(filename)[0] or 'application/octet-stream'
-
 if __name__ == "__main__":
     parser = OptionParser(usage='Usage: %prog file url')
     (options, args) = parser.parse_args()
@@ -27,6 +23,10 @@ if __name__ == "__main__":
     c.setopt(c.URL, url)
     c.setopt(c.HTTPPOST, [("file", (c.FORM_FILE, filepath))])
     c.perform()
+    if c.getinfo(pycurl.HTTP_CODE) == 200:
+        print "\nFile successfully uploaded"
+    else:
+	print "\nFailed to upload: %d" % c.getinfo(pycurl.HTTP_CODE)
+
     c.close()
 
-    print "File successfully uploaded"
